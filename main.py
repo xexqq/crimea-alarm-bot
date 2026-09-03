@@ -1,23 +1,50 @@
-import asyncio
 import os
-import logging
-
-from aiogram import Bot, Dispatcher, types
-from aiogram.utils import executor
-from aiohttp import web
-
-logging.basicConfig(level=logging.INFO)
+import time
+import json
+import urllib.request
+import urllib.parse
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(bot)
+API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
 
-@dp.message_handler(commands=["start"])
-async def start_handler(message: types.Message):
-    await message.answer("Привет! Бот запущен и работает.")
+def api_call(method, params=None):
+    url = API_URL + method
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    with urllib.request.urlopen(url, timeout=40) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def send_message(chat_id, text):
+    api_call("sendMessage", {"chat_id": chat_id, "text": text})
+
+
+def main():
+    print("Бот запущен...")
+    offset = None
+    while True:
+        params = {"timeout": 30}
+        if offset:
+            params["offset"] = offset
+        try:
+            result = api_call("getUpdates", params)
+        except Exception as e:
+            print("Ошибка запроса:", e)
+            time.sleep(5)
+            continue
+
+        for update in result.get("result", []):
+            offset = update["update_id"] + 1
+            message = update.get("message")
+            if not message:
+                continue
+            chat_id = message["chat"]["id"]
+            text = message.get("text", "")
+
+            if text == "/start":
+                send_message(chat_id, "Привет! Бот запущен и работает. 🚀")
 
 
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+    main()
